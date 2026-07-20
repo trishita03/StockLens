@@ -48,19 +48,36 @@ except Exception as e:
 # ============================================================
 # DOWNLOAD MARKET DATA
 # ============================================================
-
 @st.cache_data(ttl=900)
 def get_market_data():
+    try:
+        data = yf.download(
+            "NVDA",
+            period="6mo",
+            interval="1d",
+            progress=False,
+            auto_adjust=False
+        )
 
-    data = yf.download(
-        "NVDA",
-        period="6mo",
-        interval="1d",
-        progress=False,
-        auto_adjust=False
+        if data is not None and not data.empty:
+
+            # Fix yfinance MultiIndex columns
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.get_level_values(0)
+
+            return data.dropna()
+
+    except Exception:
+        pass
+
+    # Fallback to local CSV if Yahoo Finance fails
+    data = pd.read_csv(
+        "NVDA_yfinance_clean.csv",
+        index_col=0,
+        parse_dates=True
     )
 
-    # Fix yfinance MultiIndex columns
+    # Fix possible MultiIndex-style CSV structure
     if isinstance(data.columns, pd.MultiIndex):
         data.columns = data.columns.get_level_values(0)
 
@@ -79,7 +96,6 @@ except Exception as e:
 if market_data.empty:
     st.error("Market data is currently unavailable.")
     st.stop()
-
 
 # ============================================================
 # HEADER
