@@ -6,21 +6,13 @@ import joblib
 
 from tensorflow.keras.models import load_model
 
-
-# ============================================================
 # PAGE CONFIGURATION
-# ============================================================
-
 st.set_page_config(
     page_title="StockLens",
     page_icon="📈",
     layout="wide"
 )
-
-
-# ============================================================
 # LOAD MODEL AND SCALER
-# ============================================================
 
 @st.cache_resource
 def load_prediction_assets():
@@ -44,10 +36,7 @@ except Exception as e:
     st.exception(e)
     st.stop()
 
-
-# ============================================================
 # DOWNLOAD MARKET DATA
-# ============================================================
 @st.cache_data(ttl=900)
 def get_market_data():
     try:
@@ -59,33 +48,28 @@ def get_market_data():
             auto_adjust=False
         )
 
-        if data is not None and not data.empty:
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
 
-            # Fix yfinance MultiIndex columns
-            if isinstance(data.columns, pd.MultiIndex):
-                data.columns = data.columns.get_level_values(0)
+        data = data.dropna()
 
-            return data.dropna()
+        if not data.empty:
+            return data, "Yahoo Finance"
 
     except Exception:
         pass
 
-    # Fallback to local CSV if Yahoo Finance fails
+    # Fallback to local CSV
     data = pd.read_csv(
         "NVDA_yfinance_clean.csv",
         index_col=0,
         parse_dates=True
     )
 
-    # Fix possible MultiIndex-style CSV structure
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
-
-    return data.dropna()
-
+    return data.dropna(), "Local CSV fallback"
 
 try:
-    market_data = get_market_data()
+    market_data, data_source = get_market_data()
 
 except Exception as e:
     st.error("Unable to retrieve NVIDIA market data.")
@@ -97,10 +81,7 @@ if market_data.empty:
     st.error("Market data is currently unavailable.")
     st.stop()
 
-# ============================================================
 # HEADER
-# ============================================================
-
 st.title("📈 StockLens")
 
 st.write(
@@ -115,10 +96,7 @@ st.info(
 )
 
 
-# ============================================================
 # MARKET OVERVIEW
-# ============================================================
-
 st.divider()
 
 st.header("NVIDIA Market Overview")
@@ -178,11 +156,13 @@ col4.metric(
     "Last Trading Session",
     latest_date.strftime("%d %b %Y")
 )
+st.caption(
+    f"Data source: {data_source} | "
+    f"Latest record: {market_data.index[-1].strftime('%d %b %Y')}"
+)
 
 
-# ============================================================
 # FORECAST SECTION
-# ============================================================
 
 st.divider()
 
@@ -210,9 +190,8 @@ if forecast_button:
 
     try:
 
-        # ----------------------------------------------------
-        # GET LAST 60 CLOSING PRICES
-        # ----------------------------------------------------
+        
+        # LAST 60 CLOSING PRICES
 
         close_prices = (
             market_data["Close"]
@@ -236,19 +215,18 @@ if forecast_button:
             )
 
 
-            # ------------------------------------------------
+            
             # SCALE DATA
-            # ------------------------------------------------
 
             scaled_data = scaler.transform(
                 last_60_days
             )
 
 
-            # ------------------------------------------------
+            
             # PREPARE LSTM INPUT
             # Shape = (batch, timesteps, features)
-            # ------------------------------------------------
+            
 
             X_input = np.asarray(
                 scaled_data,
@@ -260,10 +238,10 @@ if forecast_button:
             )
 
 
-            # ------------------------------------------------
+            
             # DIRECT MODEL INFERENCE
             # Avoid model.predict() overhead/hanging
-            # ------------------------------------------------
+            
 
             prediction_tensor = model(
                 X_input,
@@ -277,9 +255,9 @@ if forecast_button:
             ).reshape(-1, 1)
 
 
-            # ------------------------------------------------
+            
             # CONVERT PREDICTION BACK TO STOCK PRICE
-            # ------------------------------------------------
+           
 
             predicted_price = float(
                 scaler.inverse_transform(
@@ -288,9 +266,9 @@ if forecast_button:
             )
 
 
-            # ------------------------------------------------
+            
             # CALCULATE PROJECTED MOVEMENT
-            # ------------------------------------------------
+            
 
             price_change = (
                 predicted_price
@@ -304,9 +282,9 @@ if forecast_button:
             ) * 100
 
 
-            # ------------------------------------------------
+            
             # DETERMINE DIRECTION
-            # ------------------------------------------------
+            
 
             if percentage_change > 0.5:
 
@@ -321,9 +299,9 @@ if forecast_button:
                 direction = "STABLE →"
 
 
-            # ------------------------------------------------
+            
             # SAVE RESULT
-            # ------------------------------------------------
+            
 
             st.session_state.forecast_result = {
 
@@ -354,9 +332,9 @@ if forecast_button:
         st.exception(e)
 
 
-# ============================================================
+
 # DISPLAY FORECAST RESULT
-# ============================================================
+
 
 if st.session_state.forecast_result is not None:
 
@@ -396,9 +374,9 @@ if st.session_state.forecast_result is not None:
     )
 
 
-    # --------------------------------------------------------
+    
     # FORECAST COMPARISON CHART
-    # --------------------------------------------------------
+    
 
     st.subheader("Price Comparison")
 
@@ -433,9 +411,9 @@ if st.session_state.forecast_result is not None:
     )
 
 
-# ============================================================
+
 # HISTORICAL PRICE PERFORMANCE
-# ============================================================
+
 
 st.divider()
 
@@ -477,9 +455,9 @@ st.caption(
 )
 
 
-# ============================================================
+
 # RECENT TRADING DATA
-# ============================================================
+
 
 st.divider()
 
@@ -532,9 +510,9 @@ st.dataframe(
 )
 
 
-# ============================================================
+
 # FOOTER
-# ============================================================
+
 
 st.divider()
 
